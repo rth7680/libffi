@@ -33,6 +33,10 @@
 #include "internal64.h"
 #include "asmnames.h"
 
+/* Note: To work in environments compiled with -mno-red-zone, these functions
+   must not rely on the red zone; any data below the stack pointer may
+   potentially get overwritten at any time. */
+
 	.text
 
 /* This macro allows the safe creation of jump tables without an
@@ -100,16 +104,9 @@ L(ret_from_load_sse):
 	/* Call the user function.  */
 	call	*%r11
 
-	/* Deallocate stack arg area; local stack frame in redzone.  */
-	leaq	24(%rbp), %rsp
-
+	/* Prep for the structure return cases.  */
 	movq	0(%rbp), %rcx		/* Reload flags.  */
 	movq	8(%rbp), %rdi		/* Reload raddr.  */
-	movq	16(%rbp), %rbp		/* Reload old frame pointer.  */
-L(UW2):
-	/* cfi_remember_state */
-	/* cfi_def_cfa(%rsp, 8) */
-	/* cfi_restore(%rbp) */
 
 	/* The first byte of the flags contains the FFI_TYPE.  */
 	cmpb	$UNIX64_RET_LAST, %cl
@@ -118,54 +115,58 @@ L(UW2):
 	ja	L(sa)
 	leaq	(%r11, %r10, 8), %r10
 
-	/* Prep for the structure cases: scratch area in redzone.  */
-	leaq	-20(%rsp), %rsi
+	/* Prep for the structure cases.  */
+	movq	%rbp, %rsi
 	jmp	*%r10
+
+
+/* Below, we're space constrained most of the time.  Thus we eschew the
+   modern "mov, pop, ret" sequence (5 bytes) for "leave, ret" (2 bytes).  */
+#define epilogue(B,E)		leaveq; L(C1(UW,B)): ret; L(C1(UW,E)):
 
 	.balign	8
 L(store_table):
 E(L(store_table), UNIX64_RET_VOID)
-	ret
+	epilogue(2, 3)
 E(L(store_table), UNIX64_RET_UINT8)
 	movzbl	%al, %eax
 	movq	%rax, (%rdi)
-	ret
+	epilogue(4, 5)
 E(L(store_table), UNIX64_RET_UINT16)
 	movzwl	%ax, %eax
 	movq	%rax, (%rdi)
-	ret
+	epilogue(6, 7)
 E(L(store_table), UNIX64_RET_UINT32)
 	movl	%eax, %eax
 	movq	%rax, (%rdi)
-	ret
+	epilogue(8, 9)
 E(L(store_table), UNIX64_RET_SINT8)
 	movsbq	%al, %rax
-	movq	%rax, (%rdi)
-	ret
+	jmp	L(s8)
 E(L(store_table), UNIX64_RET_SINT16)
 	movswq	%ax, %rax
-	movq	%rax, (%rdi)
-	ret
+	jmp	L(s8)
 E(L(store_table), UNIX64_RET_SINT32)
 	cltq
 	movq	%rax, (%rdi)
-	ret
+	epilogue(14, 15)
 E(L(store_table), UNIX64_RET_INT64)
+L(s8):
 	movq	%rax, (%rdi)
-	ret
+	epilogue(16, 17)
 E(L(store_table), UNIX64_RET_XMM32)
 	movd	%xmm0, (%rdi)
-	ret
+	epilogue(18, 19)
 E(L(store_table), UNIX64_RET_XMM64)
 	movq	%xmm0, (%rdi)
-	ret
+	epilogue(20, 21)
 E(L(store_table), UNIX64_RET_X87)
 	fstpt	(%rdi)
-	ret
+	epilogue(22, 23)
 E(L(store_table), UNIX64_RET_X87_2)
 	fstpt	(%rdi)
 	fstpt	16(%rdi)
-	ret
+	epilogue(24, 25)
 E(L(store_table), UNIX64_RET_ST_XMM0_RAX)
 	movq	%rax, 8(%rsi)
 	jmp	L(s3)
@@ -181,13 +182,13 @@ L(s2):
 	movq	%rax, (%rsi)
 	shrl	$UNIX64_SIZE_SHIFT, %ecx
 	rep movsb
-	ret
+	epilogue(26, 27)
 	.balign 8
 L(s3):
 	movq	%xmm0, (%rsi)
 	shrl	$UNIX64_SIZE_SHIFT, %ecx
 	rep movsb
-	ret
+	epilogue(28, 29)
 
 L(sa):	call	PLT(C(abort))
 
@@ -195,8 +196,6 @@ L(sa):	call	PLT(C(abort))
 	   It's not worth an indirect jump to load the exact set of
 	   SSE registers needed; zero or all is a good compromise.  */
 	.balign 2
-L(UW3):
-	/* cfi_restore_state */
 L(load_sse):
 	movdqa	0x30(%r10), %xmm0
 	movdqa	0x40(%r10), %xmm1
@@ -208,8 +207,10 @@ L(load_sse):
 	movdqa	0xa0(%r10), %xmm7
 	jmp	L(ret_from_load_sse)
 
-L(UW4):
+L(UW30):
 ENDF(C(ffi_call_unix64))
+
+#undef epilogue
 
 /* 6 general registers, 8 vector registers,
    32 bytes of rvalue, 8 bytes of alignment.  */
@@ -218,17 +219,17 @@ ENDF(C(ffi_call_unix64))
 #define ffi_closure_OFS_RVALUE	(ffi_closure_OFS_V + 8*16)
 #define ffi_closure_FS		(ffi_closure_OFS_RVALUE + 32 + 8)
 
-/* The location of rvalue within the red zone after deallocating the frame.  */
-#define ffi_closure_RED_RVALUE	(ffi_closure_OFS_RVALUE - ffi_closure_FS)
+#define epilogue(B, E) \
+	addq $ffi_closure_FS, %rsp; L(C1(UW,B)): ret ; L(C1(UW,E)):
 
 	.balign	2
 	.globl	C(ffi_closure_unix64_sse)
 	FFI_HIDDEN(C(ffi_closure_unix64_sse))
 
 C(ffi_closure_unix64_sse):
-L(UW5):
+L(UW31):
 	subq	$ffi_closure_FS, %rsp
-L(UW6):
+L(UW32):
 	/* cfi_adjust_cfa_offset(ffi_closure_FS) */
 
 	movdqa	%xmm0, ffi_closure_OFS_V+0x00(%rsp)
@@ -241,7 +242,7 @@ L(UW6):
 	movdqa	%xmm7, ffi_closure_OFS_V+0x70(%rsp)
 	jmp	L(sse_entry1)
 
-L(UW7):
+L(UW33):
 ENDF(C(ffi_closure_unix64_sse))
 
 	.balign	2
@@ -249,9 +250,9 @@ ENDF(C(ffi_closure_unix64_sse))
 	FFI_HIDDEN(C(ffi_closure_unix64))
 
 C(ffi_closure_unix64):
-L(UW8):
+L(UW34):
 	subq	$ffi_closure_FS, %rsp
-L(UW9):
+L(UW35):
 	/* cfi_adjust_cfa_offset(ffi_closure_FS) */
 L(sse_entry1):
 	movq	%rdi, ffi_closure_OFS_G+0x00(%rsp)
@@ -276,58 +277,53 @@ L(do_closure):
 	leaq	ffi_closure_FS+8(%rsp), %r9		/* Load argp */
 	call	C(ffi_closure_unix64_inner)
 
-	/* Deallocate stack frame early; return value is now in redzone.  */
-	addq	$ffi_closure_FS, %rsp
-L(UW10):
-	/* cfi_adjust_cfa_offset(-ffi_closure_FS) */
-
 	/* The first byte of the return value contains the FFI_TYPE.  */
 	cmpb	$UNIX64_RET_LAST, %al
 	movzbl	%al, %r10d
 	leaq	L(load_table)(%rip), %r11
 	ja	L(la)
 	leaq	(%r11, %r10, 8), %r10
-	leaq	ffi_closure_RED_RVALUE(%rsp), %rsi
+	leaq	ffi_closure_OFS_RVALUE(%rsp), %rsi
 	jmp	*%r10
 
 	.balign	8
 L(load_table):
 E(L(load_table), UNIX64_RET_VOID)
-	ret
+	jmp	L(l4)
 E(L(load_table), UNIX64_RET_UINT8)
 	movzbl	(%rsi), %eax
-	ret
+	jmp	L(l4)
 E(L(load_table), UNIX64_RET_UINT16)
 	movzwl	(%rsi), %eax
-	ret
+	jmp	L(l4)
 E(L(load_table), UNIX64_RET_UINT32)
 	movl	(%rsi), %eax
-	ret
+	jmp	L(l4)
 E(L(load_table), UNIX64_RET_SINT8)
 	movsbl	(%rsi), %eax
-	ret
+	jmp	L(l4)
 E(L(load_table), UNIX64_RET_SINT16)
 	movswl	(%rsi), %eax
-	ret
+	jmp	L(l4)
 E(L(load_table), UNIX64_RET_SINT32)
 	movl	(%rsi), %eax
-	ret
+	jmp	L(l4)
 E(L(load_table), UNIX64_RET_INT64)
 	movq	(%rsi), %rax
-	ret
+	jmp	L(l4)
 E(L(load_table), UNIX64_RET_XMM32)
 	movd	(%rsi), %xmm0
-	ret
+	jmp	L(l4)
 E(L(load_table), UNIX64_RET_XMM64)
 	movq	(%rsi), %xmm0
-	ret
+	jmp	L(l4)
 E(L(load_table), UNIX64_RET_X87)
 	fldt	(%rsi)
-	ret
+	jmp	L(l4)
 E(L(load_table), UNIX64_RET_X87_2)
 	fldt	16(%rsi)
 	fldt	(%rsi)
-	ret
+	jmp	L(l4)
 E(L(load_table), UNIX64_RET_ST_XMM0_RAX)
 	movq	8(%rsi), %rax
 	jmp	L(l3)
@@ -341,25 +337,28 @@ E(L(load_table), UNIX64_RET_ST_RAX_RDX)
 	movq	8(%rsi), %rdx
 L(l2):
 	movq	(%rsi), %rax
-	ret
+L(l4):
+	epilogue(36, 37);
 	.balign	8
 L(l3):
 	movq	(%rsi), %xmm0
-	ret
+	epilogue(38, 39);
 
 L(la):	call	PLT(C(abort))
 
-L(UW11):
+L(UW40):
 ENDF(C(ffi_closure_unix64))
+
+#undef epilogue
 
 	.balign	2
 	.globl	C(ffi_go_closure_unix64_sse)
 	FFI_HIDDEN(C(ffi_go_closure_unix64_sse))
 
 C(ffi_go_closure_unix64_sse):
-L(UW12):
+L(UW41):
 	subq	$ffi_closure_FS, %rsp
-L(UW13):
+L(UW42):
 	/* cfi_adjust_cfa_offset(ffi_closure_FS) */
 
 	movdqa	%xmm0, ffi_closure_OFS_V+0x00(%rsp)
@@ -372,7 +371,7 @@ L(UW13):
 	movdqa	%xmm7, ffi_closure_OFS_V+0x70(%rsp)
 	jmp	L(sse_entry2)
 
-L(UW14):
+L(UW43):
 ENDF(C(ffi_go_closure_unix64_sse))
 
 	.balign	2
@@ -380,9 +379,9 @@ ENDF(C(ffi_go_closure_unix64_sse))
 	FFI_HIDDEN(C(ffi_go_closure_unix64))
 
 C(ffi_go_closure_unix64):
-L(UW15):
+L(UW44):
 	subq	$ffi_closure_FS, %rsp
-L(UW16):
+L(UW45):
 	/* cfi_adjust_cfa_offset(ffi_closure_FS) */
 L(sse_entry2):
 	movq	%rdi, ffi_closure_OFS_G+0x00(%rsp)
@@ -403,7 +402,7 @@ L(sse_entry2):
 #endif
 	jmp	L(do_closure)
 
-L(UW17):
+L(UW46):
 ENDF(C(ffi_go_closure_unix64))
 
 /* Sadly, OSX cctools-as doesn't understand .cfi directives at all.  */
@@ -444,60 +443,86 @@ L(SCIE):
 	.balign 8
 L(ECIE):
 
+#define epilogue(P, B, E) \
+	ADV(UW##B, UW##P);					\
+	.byte	0xa;		/* DW_CFA_remember_state */	\
+	.byte	0xc, 7, 8;	/* DW_CFA_def_cfa, %rsp 8 */	\
+	.byte	0xc0+6;		/* DW_CFA_restore, %rbp */	\
+	ADV(UW##E, UW##B);					\
+	.byte	0xb		/* DW_CFA_restore_state */
+
 	.set	L(set1),L(EFDE1)-L(SFDE1)
 	.long	L(set1)			/* FDE Length */
 L(SFDE1):
 	.long	L(SFDE1)-L(CIE)		/* FDE CIE offset */
 	.long	PCREL(L(UW0))		/* Initial location */
-	.long	L(UW4)-L(UW0)		/* Address range */
+	.long	L(UW30)-L(UW0)		/* Address range */
 	.byte	0			/* Augmentation size */
 	ADV(UW1, UW0)
 	.byte	0xc, 6, 32		/* DW_CFA_def_cfa, %rbp 32 */
 	.byte	0x80+6, 2		/* DW_CFA_offset, %rbp 2*-8 */
-	ADV(UW2, UW1)
-	.byte	0xa			/* DW_CFA_remember_state */
-	.byte	0xc, 7, 8		/* DW_CFA_def_cfa, %rsp 8 */
-	.byte	0xc0+6			/* DW_CFA_restore, %rbp */
-	ADV(UW3, UW2)
-	.byte	0xb			/* DW_CFA_restore_state */
+	epilogue(1, 2, 3)
+	epilogue(3, 4, 5)
+	epilogue(5, 6, 7)
+	epilogue(7, 8, 9)
+	epilogue(9, 14, 15)
+	epilogue(15, 16, 17)
+	epilogue(17, 18, 19)
+	epilogue(19, 20, 21)
+	epilogue(21, 22, 23)
+	epilogue(23, 24, 25)
+	epilogue(25, 26, 27)
+	epilogue(27, 28, 29)
 	.balign	8
 L(EFDE1):
+
+#undef epilogue
 
 	.set	L(set2),L(EFDE2)-L(SFDE2)
 	.long	L(set2)			/* FDE Length */
 L(SFDE2):
 	.long	L(SFDE2)-L(CIE)		/* FDE CIE offset */
-	.long	PCREL(L(UW5))		/* Initial location */
-	.long	L(UW7)-L(UW5)		/* Address range */
+	.long	PCREL(L(UW31))		/* Initial location */
+	.long	L(UW33)-L(UW31)		/* Address range */
 	.byte	0			/* Augmentation size */
-	ADV(UW6, UW5)
+	ADV(UW32, UW31)
 	.byte	0xe			/* DW_CFA_def_cfa_offset */
 	.byte	ffi_closure_FS + 8, 1	/* uleb128, assuming 128 <= FS < 255 */
 	.balign	8
 L(EFDE2):
 
+#define epilogue(P, B, E) \
+	ADV(UW##B, UW##P);					\
+	.byte	0xa;		/* DW_CFA_remember_state */	\
+	.byte	0xe, 8;		/* DW_CFA_def_cfa_offset, 8 */	\
+	ADV(UW##E, UW##B);					\
+	.byte	0xb		/* DW_CFA_restore_state */
+
 	.set	L(set3),L(EFDE3)-L(SFDE3)
 	.long	L(set3)			/* FDE Length */
 L(SFDE3):
 	.long	L(SFDE3)-L(CIE)		/* FDE CIE offset */
-	.long	PCREL(L(UW8))		/* Initial location */
-	.long	L(UW11)-L(UW8)		/* Address range */
+	.long	PCREL(L(UW34))		/* Initial location */
+	.long	L(UW40)-L(UW34)		/* Address range */
 	.byte	0			/* Augmentation size */
-	ADV(UW9, UW8)
+	ADV(UW35, UW34)
 	.byte	0xe			/* DW_CFA_def_cfa_offset */
 	.byte	ffi_closure_FS + 8, 1	/* uleb128, assuming 128 <= FS < 255 */
-	ADV(UW10, UW9)
-	.byte	0xe, 8			/* DW_CFA_def_cfa_offset 8 */
+	epilogue(35, 36, 37)
+	epilogue(37, 38, 39)
+	.balign	8
 L(EFDE3):
+
+#undef epilogue
 
 	.set	L(set4),L(EFDE4)-L(SFDE4)
 	.long	L(set4)			/* FDE Length */
 L(SFDE4):
 	.long	L(SFDE4)-L(CIE)		/* FDE CIE offset */
-	.long	PCREL(L(UW12))		/* Initial location */
-	.long	L(UW14)-L(UW12)		/* Address range */
+	.long	PCREL(L(UW41))		/* Initial location */
+	.long	L(UW43)-L(UW41)		/* Address range */
 	.byte	0			/* Augmentation size */
-	ADV(UW13, UW12)
+	ADV(UW42, UW41)
 	.byte	0xe			/* DW_CFA_def_cfa_offset */
 	.byte	ffi_closure_FS + 8, 1	/* uleb128, assuming 128 <= FS < 255 */
 	.balign	8
@@ -507,10 +532,10 @@ L(EFDE4):
 	.long	L(set5)			/* FDE Length */
 L(SFDE5):
 	.long	L(SFDE5)-L(CIE)		/* FDE CIE offset */
-	.long	PCREL(L(UW15))		/* Initial location */
-	.long	L(UW17)-L(UW15)		/* Address range */
+	.long	PCREL(L(UW44))		/* Initial location */
+	.long	L(UW46)-L(UW44)		/* Address range */
 	.byte	0			/* Augmentation size */
-	ADV(UW16, UW15)
+	ADV(UW45, UW44)
 	.byte	0xe			/* DW_CFA_def_cfa_offset */
 	.byte	ffi_closure_FS + 8, 1	/* uleb128, assuming 128 <= FS < 255 */
 	.balign	8
