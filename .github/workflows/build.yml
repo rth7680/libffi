@@ -63,6 +63,7 @@ jobs:
         run: |
           if test x"$MEVAL" != x; then eval ${MEVAL}; fi
           ./.ci/install.sh
+          ./.ci/meson-build.sh
           ./.ci/build.sh
 
   build-macos:
@@ -79,6 +80,7 @@ jobs:
       - run: git config --global core.autocrlf input
       - uses: actions/checkout@v4
       - run: ./.ci/install.sh
+      - run: ${{ matrix.compilers }} ./.ci/meson-build.sh
       - run: ${{ matrix.compilers }} ./.ci/build.sh
 
   build-non-msvc:
@@ -340,6 +342,7 @@ jobs:
           ANDROID_API_LEVEL: 23
           CONFIGURE_OPTIONS: "--disable-shared --disable-multi-os-directory" # fixes warning about unsupported -print-multi-os-directory with clang
         run: |
+          ./.ci/meson-build.sh
           # Relevant documentation:
           # https://developer.android.com/ndk/guides/other_build_systems
           # https://android.googlesource.com/platform/ndk/+/master/docs/BuildSystemMaintainers.md
@@ -356,3 +359,28 @@ jobs:
           export NM="${TOOLCHAIN}"/bin/llvm-nm
           export OBJDUMP="${TOOLCHAIN}"/bin/llvm-objdump
           ./.ci/build.sh
+
+  # This Meson job is separated from build-msvc job because it does not use
+  # cygwin which is only supported by Meson.
+  build-meson-msvc:
+    name: Meson Windows ${{ matrix.width }}-bit Visual C++
+    runs-on: windows-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - width: 32
+            tools: amd64_x86
+          - width: 64
+            tools: amd64
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: ilammy/msvc-dev-cmd@v1.8.1
+        with:
+          arch: ${{ matrix.tools }}
+      - name: Build and test
+        run: |
+          pip3 install meson ninja
+          python3 ./.ci/meson-build.py
