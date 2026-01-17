@@ -150,9 +150,6 @@ typedef enum ffi_abi {
 # define FFI_GO_CLOSURES 1
 #endif
 
-/* Needed for soft-float long-double-128 support.  */
-#define FFI_TYPE_UINT128 (FFI_TYPE_LAST + 1)
-
 #if _CALL_ELF == 2
 # define FFI_TRAMPOLINE_SIZE 32
 #else
