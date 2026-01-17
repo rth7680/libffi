@@ -129,7 +129,7 @@ ffi_call_int (ffi_cif *cif, void (*fn)(void), void *rvalue,
 
   FFI_ASSERT(cif->abi == FFI_GNUW64 || cif->abi == FFI_WIN64);
 
-  /* If we have any irrecularly sized structure arguments,
+  /* If we have any int128 or irregularly sized structure arguments,
      make a copy so we are passing by value.  */
   for (i = 0; i < nargs; i++)
     {
@@ -137,8 +137,13 @@ ffi_call_int (ffi_cif *cif, void (*fn)(void), void *rvalue,
       int size = at->size;
       bool needcopy = false;
 
-      if (at->type == FFI_TYPE_STRUCT)
+      switch (at->type)
 	{
+	case FFI_TYPE_UINT128:
+	case FFI_TYPE_SINT128:
+	  needcopy = true;
+	  break;
+	case FFI_TYPE_STRUCT:
 	  switch (size)
 	    {
 	    case 1:
