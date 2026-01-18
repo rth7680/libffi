@@ -32,6 +32,13 @@
 
 #include <stdlib.h>
 
+
+struct ffi_aix_trampoline_struct {
+    void * code_pointer;	/* Pointer to ffi_closure_ASM */
+    void * toc;			/* TOC */
+    void * static_chain;	/* Pointer to closure */
+};
+
 extern void ffi_closure_ASM (void);
 
 #if defined (FFI_GO_CLOSURES)

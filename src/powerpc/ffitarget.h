@@ -191,14 +191,4 @@ typedef enum ffi_abi {
 # endif
 #endif
 
-#ifndef LIBFFI_ASM
-#if defined(POWERPC_DARWIN) || defined(POWERPC_AIX)
-struct ffi_aix_trampoline_struct {
-    void * code_pointer;	/* Pointer to ffi_closure_ASM */
-    void * toc;			/* TOC */
-    void * static_chain;	/* Pointer to closure */
-};
-#endif
-#endif
-
 #endif
