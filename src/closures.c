@@ -48,9 +48,6 @@
 
 #include <stddef.h>
 #include <unistd.h>
-#ifdef  HAVE_SYS_MEMFD_H
-#include <sys/memfd.h>
-#endif
 
 static const size_t overhead =
   (sizeof(max_align_t) > sizeof(void *) + sizeof(size_t)) ?

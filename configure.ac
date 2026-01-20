@@ -72,7 +72,6 @@ EOF
 
 AM_MAINTAINER_MODE
 
-AC_CHECK_HEADERS(sys/memfd.h)
 AC_CHECK_FUNCS([memfd_create])
 
 dnl The -no-testsuite modules omit the test subdir.
