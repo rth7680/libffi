@@ -144,7 +144,7 @@ endif
 libffi_version_info = -version-info `grep -v '^\#' $(srcdir)/libtool-version`
 
 libffi.map: $(top_srcdir)/libffi.map.in
-	$(COMPILE) -D$(TARGET) -DGENERATE_LIBFFI_MAP \
+	$(COMPILE) -D$(TARGET) \
 	 -E -x assembler-with-cpp -o $@ $(top_srcdir)/libffi.map.in
 
 libffi_la_LDFLAGS = -no-undefined $(libffi_version_info) $(libffi_version_script) $(LTLDFLAGS) $(AM_LTLDFLAGS)

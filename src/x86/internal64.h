@@ -1,3 +1,5 @@
+#include "ffi_cet.h"
+
 #define UNIX64_RET_VOID		0
 #define UNIX64_RET_UINT8	1
 #define UNIX64_RET_UINT16	2

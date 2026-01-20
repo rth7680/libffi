@@ -4,6 +4,7 @@
 #include <ffi.h>
 #include <ffi_cfi.h>
 #include <ffi_hidden.h>
+#include "ffi_cet.h"
 #include "asmnames.h"
 
 #if defined(HAVE_AS_CFI_PSEUDO_OP)
