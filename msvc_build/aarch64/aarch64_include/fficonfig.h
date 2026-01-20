@@ -74,9 +74,6 @@
 /* Define if you support more than one size of the long double type */
 /* #undef HAVE_LONG_DOUBLE_VARIANT */
 
-/* Define to 1 if you have the `memcpy' function. */
-#define HAVE_MEMCPY 1
-
 /* Define to 1 if you have the <memory.h> header file. */
 #define HAVE_MEMORY_H 1
 
@@ -169,9 +166,6 @@
 	STACK_DIRECTION < 0 => grows toward lower addresses
 	STACK_DIRECTION = 0 => direction of growth unknown */
 /* #undef STACK_DIRECTION */
-
-/* Define to 1 if you have the ANSI C header files. */
-#define STDC_HEADERS 1
 
 /* Define if symbols are underscored. */
 /* #undef SYMBOL_UNDERSCORE */
