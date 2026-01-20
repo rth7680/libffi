@@ -24,6 +24,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.  */
 #include <fficonfig.h>
 #include <ffi.h>
 #include <ffi_cfi.h>
+#include <ffi_hidden.h>
 #include "internal.h"
 
 #ifdef HAVE_MACHINE_ASM_H

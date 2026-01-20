@@ -28,6 +28,7 @@
 #include <fficonfig.h>
 #include <ffi.h>
 #include <ffi_cfi.h>
+#include <ffi_hidden.h>
 #include "internal.h"
 
 	.arch ev6

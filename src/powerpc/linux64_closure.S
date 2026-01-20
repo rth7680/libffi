@@ -27,6 +27,7 @@
 #define LIBFFI_ASM
 #include <fficonfig.h>
 #include <ffi.h>
+#include <ffi_hidden.h>
 #include "internal.h"
 
 	.file	"linux64_closure.S"

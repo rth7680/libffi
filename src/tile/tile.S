@@ -27,6 +27,7 @@
 #define LIBFFI_ASM
 #include <fficonfig.h>
 #include <ffi.h>
+#include <ffi_hidden.h>
 
 /* Number of bytes in a register. */
 #define REG_SIZE FFI_SIZEOF_ARG

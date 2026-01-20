@@ -30,6 +30,7 @@
 #define LIBFFI_ASM	
 #include <fficonfig.h>
 #include <ffi.h>
+#include <ffi_hidden.h>
 #include "internal64.h"
 #include "asmnames.h"
 

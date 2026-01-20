@@ -30,6 +30,7 @@
 #include <fficonfig.h>
 #include <ffi.h>
 #include <ffi_cfi.h>
+#include <ffi_hidden.h>
 #include "internal.h"
 
 /* GCC 4.8 provides __ARM_ARCH; construct it otherwise.  */

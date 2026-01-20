@@ -32,6 +32,7 @@
 #define LIBFFI_ASM	
 #include <fficonfig.h>
 #include <ffi.h>
+#include <ffi_hidden.h>
 #include "internal.h"
 
 #define C2(X, Y)  X ## Y
